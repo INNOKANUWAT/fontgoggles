@@ -1,5 +1,101 @@
 # Changelog for FontGoggles
 
+## [1.9.4] - 2026-05-18
+
+- [COLRv1] Fixed sweep gradients, padding modes, and some other rendering problems. Contributed by Felix Herbst via [black-renderer](https://github.com/fontra/black-renderer). ([Issue 526](https://github.com/justvanrossum/fontgoggles/issues/526), [black-renderer PR 235](https://github.com/fontra/black-renderer/pull/235), [black-renderer PR 238](https://github.com/fontra/black-renderer/pull/238), [black-renderer PR 241](https://github.com/fontra/black-renderer/pull/241))
+
+## [1.9.3] - 2026-04-12
+
+- Also read stylistic set names from GPOS, and not just from GSUB. ([Issue 529](https://github.com/justvanrossum/fontgoggles/issues/529), [PR 530](https://github.com/justvanrossum/fontgoggles/pull/530))
+
+## [1.9.2] - 2026-01-10
+
+- Added option to show the baseline, seperately from the other font metrics. Contributed by Khaled Hosny. ([PR 512](https://github.com/justvanrossum/fontgoggles/pull/512))
+- Fixed "View" menu item titles: for toggle items, reflect the current state with Show/Hide. This fixes a regression that went unnoticed for quite a while. ([Issue 513](https://github.com/justvanrossum/fontgoggles/issues/513), [PR 514](https://github.com/justvanrossum/fontgoggles/pull/514))
+
+## [1.9.1] - 2025-12-29
+
+- Improve "hidden axis" behavior when multiple axes exist with the same tag (for non-linear-interpolation purposes). [PR 510](https://github.com/justvanrossum/fontgoggles/pull/510)
+- Update HarfBuzz to 12.3.0 (via uharfbuzz 0.53.2)
+
+## [1.9.0] - 2025-12-25
+
+- Add option to show font metrics (ascender, descender, x-height, cap-height). There is a new menu item under “View”: Show Font Metrics (command-6). Contributed by Simon Cozens and Khaled Hosny ([Issue 235](https://github.com/justvanrossum/fontgoggles/issues/235), [PR 507](https://github.com/justvanrossum/fontgoggles/pull/507))
+- Updated to Unicode 17
+- Updated OpenType tag descriptions
+
+## [1.8.7] - 2025-06-10
+
+- Synchronize feature compilation strategy with fontmake. This enables Variable Features, and fixes different behavior between fontmake and FontGoggles. ([Issue 486](https://github.com/justvanrossum/fontgoggles/issues/486), [PR 487](https://github.com/justvanrossum/fontgoggles/pull/487))
+- Default to "English" when retrieving a name for (say) a stylistic set. ([Issue 483](https://github.com/justvanrossum/fontgoggles/issues/483), [PR 484](https://github.com/justvanrossum/fontgoggles/pull/484))
+
+## [1.8.6] - 2025-04-14
+
+- Updated language, script and feature tags to OpenType 1.9.1. Thank you Denis Moyogo Jacquerye. ([PR 477](https://github.com/justvanrossum/fontgoggles/pull/477) and [PR 478](https://github.com/justvanrossum/fontgoggles/pull/478))
+- Updated `uharfbuzz` to 0.49.0 and `HarfBuzz` to 11.0.1. This reinstates support for the experimental `VARC` table, which accidentally got broken.
+- Updated `ufo2ft` to 3.4.2
+- Updated `fonttools` to 4.57.0
+- Made the core FontGoggles non-UI library code usable on platforms other than macOS. Contributed by Rob Stenson. ([PR 451](https://github.com/justvanrossum/fontgoggles/pull/451))
+
+## [1.8.5] - 2025-01-13
+
+- Fix UFO/designspace support for macOS 10.14 ([Issue 462](https://github.com/justvanrossum/fontgoggles/issues/462), [PR 463](https://github.com/justvanrossum/fontgoggles/issues/462))
+
+## [1.8.4] - 2025-01-11
+
+- Update to Unicode 16.0
+- Update `ufo2ft` to 3.4.0
+- Update `HarfBuzz` to 10.2.0
+- Update `uharfbuzz` to 0.45.0
+
+## [1.8.3] - 2024-11-08
+
+- Update `HarfBuzz` to 10.1.0
+- Update `uharfbuzz` to 0.42.0
+
+## [1.8.2] - 2024-09-14
+
+- Fixed bug where feature compilation from UFO would fail ([Issue 432](https://github.com/justvanrossum/fontgoggles/issues/432), [Issue 433](https://github.com/justvanrossum/fontgoggles/issues/433), [PR 434](https://github.com/justvanrossum/fontgoggles/pull/434))
+
+## [1.8.1] - 2024-07-13
+
+- Add support for the [proposed `VARC` table](https://github.com/harfbuzz/boring-expansion-spec/blob/main/VARC.md) for variable components, via updated harfbuzz/uharfbuzz/fonttools dependencies
+
+## [1.8] - 2024-05-25
+
+- No new functionality
+- Updated bundled versions of all dependencies (See “About” window for embedded version numbers)
+- Updated to Unicode 15.1
+- Miscellaneous maintainance
+- Updated OpenType feature tags, script tags and language tags
+- Upgraded to Python 3.12
+- FontGoggles is now a “Universal” build, meaning it runs natively on Apple Silicon as wel as Intel
+- Still backwards compatible down to macOS 10.10
+
+## [1.7.4] - 2023-05-23
+
+- Updated bundled versions of uharfbuzz and fonttools
+- Apply kerning between Hiragana and Katakana ([Issue 310](https://github.com/justvanrossum/fontgoggles/issues/310), [PR 311](https://github.com/justvanrossum/fontgoggles/pull/311))
+- Use Python 3.9
+
+## [1.7.3] - 2022-11-26
+
+- Added the supported file formats to the drop placeholder text, so they are more discoverable ([PR 295](https://github.com/justvanrossum/fontgoggles/pull/295))
+
+## [1.7.2] - 2022-11-22
+
+- Fixed support for macOS <= 10.15
+
+## [1.7.1] - 2022-11-22
+
+- Fixed cosmetic layout issue on macOS 11 an up. Thanks to Frederik Berlaen. ([Issue 293](https://github.com/justvanrossum/fontgoggles/issues/293), [PR 294](https://github.com/justvanrossum/fontgoggles/pull/294))
+
+## [1.7.0] - 2022-11-22
+
+- Add support for DesignSpace format 5 (Discrete axes and multiple Variable Font definitions) ([Issue 291](https://github.com/justvanrossum/fontgoggles/issues/291), [PR 292](https://github.com/justvanrossum/fontgoggles/pull/292))
+- Updated internal dependencies: `fonttools==4.38.0` and `uharfbuzz==0.32.0` among others.
+- Updated blackrenderer to 0.6.0, which fixes [276](https://github.com/justvanrossum/fontgoggles/issues/276) and [278](https://github.com/justvanrossum/fontgoggles/issues/278)
+
 ## [1.6.0] - 2022-07-29
 
 - [Issue 267](https://github.com/justvanrossum/fontgoggles/issues/267), [PR 269](https://github.com/justvanrossum/fontgoggles/pull/269) by Khaled Hosny:
@@ -8,6 +104,7 @@
   - Remove FreeType dependency
 
 Practically, this means:
+
 - Support for [`avar` 2](https://github.com/harfbuzz/boring-expansion-spec/issues/14)
 - Support for more than 65536 glyphs in OTF/TTF
 

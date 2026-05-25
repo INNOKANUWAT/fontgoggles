@@ -10,7 +10,7 @@ import traceback
 import unicodedata2 as unicodedata
 import AppKit
 import objc
-from vanilla import (ActionButton, CheckBox, EditText, Group, List, PopUpButton, SplitView, Tabs,
+from vanilla import (ActionButton, CheckBox, EditText, Group, List, PopUpButton, SplitView,
                      TextBox, TextEditor, VanillaBaseControl, Window, HorizontalLine)
 from vanilla.dialogs import getFile
 from fontTools.misc.arrayTools import offsetRect
@@ -22,6 +22,7 @@ from fontgoggles.mac.fileObserver import getFileObserver
 from fontgoggles.mac.fontList import FontList, fontItemMinimumSize, fontItemMaximumSize, makeUndoProxy
 from fontgoggles.mac.misc import ClassNameIncrementer, makeTextCell
 from fontgoggles.mac.sliderGroup import SliderGroup, SliderPlus
+from fontgoggles.mac.vanillaTabsOld import Tabs
 from fontgoggles.compile.compilerPool import CompilerError
 from fontgoggles.misc.decorators import asyncTaskAutoCancel, suppressAndLogException
 from fontgoggles.misc.textInfo import TextInfo
@@ -128,6 +129,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         self.updateFileObservers()
         self.loadFonts(shouldRestoreSettings=True)
 
+    @objc.python_method
     @suppressAndLogException
     def _windowCloseCallback(self, sender):
         obs = getFileObserver()
@@ -152,6 +154,8 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         uiSettings.windowPosition = [x, y, w, h]
         uiSettings.fontListItemSize = self.fontList.itemSize
         uiSettings.fontListShowFontFileName = self.fontList.showFontFileName
+        uiSettings.fontListShowMetrics = self.fontList.showMetrics
+        uiSettings.fontListShowBaseline = self.fontList.showBaseline
 
         uiSettings.characterListVisible = self.w.mainSplitView.isPaneReallyVisible("characterList")
         uiSettings.characterListSize = self.w.mainSplitView.paneSize("characterList")
@@ -195,6 +199,9 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         self.characterList._tableView.setAllowsColumnSelection_(True)
         self.characterList._tableView.setDelegate_(self)
         self.characterList._nsObject.setBorderType_(AppKit.NSNoBorder)
+        if hasattr(AppKit, "NSTableViewStylePlain") and hasattr(self.characterList.getNSTableView(), "setStyle_"):
+            self.characterList.getNSTableView().setStyle_(AppKit.NSTableViewStylePlain)
+            self.characterList.getNSTableView().setIntercellSpacing_((3, 2))
         group.characterList = self.characterList
         return group
 
@@ -222,6 +229,9 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         self.glyphList._tableView.setAllowsColumnSelection_(True)
         self.glyphList._tableView.setDelegate_(self)
         self.glyphList._nsObject.setBorderType_(AppKit.NSNoBorder)
+        if hasattr(AppKit, "NSTableViewStylePlain") and hasattr(self.glyphList.getNSTableView(), "setStyle_"):
+            self.glyphList.getNSTableView().setStyle_(AppKit.NSTableViewStylePlain)
+            self.glyphList.getNSTableView().setIntercellSpacing_((3, 2))
         group.glyphList = self.glyphList
         return group
 
@@ -245,6 +255,8 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
                                  relativeVBaseline=self.project.textSettings.relativeVBaseline,
                                  relativeMargin=self.project.textSettings.relativeMargin,
                                  showFontFileName=self.project.uiSettings.fontListShowFontFileName,
+                                 showMetrics=self.project.uiSettings.fontListShowMetrics,
+                                 showBaseline=self.project.uiSettings.fontListShowBaseline,
                                  selectionChangedCallback=self.fontListSelectionChangedCallback,
                                  glyphSelectionChangedCallback=self.fontListGlyphSelectionChangedCallback,
                                  arrowKeyCallback=self.fontListArrowKeyCallback)
@@ -417,6 +429,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
                 self.observedPaths[path].append(fontItemInfo)
                 obs.addObserver(path, self._fileChanged)
 
+    @objc.python_method
     @suppressAndLogException
     def _fileChanged(self, oldPath, newPath, wasModified):
         # This gets called by the file observer, when a file changed on disk.
@@ -453,6 +466,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         if wasModified:
             self.loadFonts()
 
+    @objc.python_method
     @suppressAndLogException
     def _projectFontsChanged(self, changeSet):
         # This gets called by the undo manager, upon performing undo or redo.
@@ -520,6 +534,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         else:
             self.setFontItemText(fontItemInfo, fontItem)
             self.growFontListFromItem(fontItem)
+            fontItem.setFontKey(fontItemInfo.fontKey, fontItemInfo.font.nameInCollection)
 
     @staticmethod
     def _gatherSidebarInfo(fonts):
@@ -599,6 +614,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
     def iterFontItemInfoAndItems(self):
         return self.fontList.iterFontItemInfoAndItems()
 
+    @objc.python_method
     @asyncTaskAutoCancel
     async def textEntryChangedCallback(self, sender, updateCharacterList=True):
         if not hasattr(self, "directionPopUp"):
@@ -698,6 +714,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         yield
         self._callbackRecursionLock -= 1
 
+    @objc.python_method
     @asyncTaskAutoCancel
     async def updateGlyphList(self, glyphs, delay=0):
         if not hasattr(self, "fontList"):
@@ -719,6 +736,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
             if fontItem is not None:
                 self.glyphList.setSelection(fontItem.selection)
 
+    @objc.python_method
     @asyncTaskAutoCancel
     async def updateCharacterList(self, selection=None, delay=0):
         if not hasattr(self, "project"):
@@ -899,6 +917,7 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
         self.textEntryChangedCallback(self.textEntry)
         self.relativeBaselineSlider.set(self.getRelativeBaselineValueForSlider())
 
+    @objc.python_method
     @suppressAndLogException
     def alignmentChangedCallback(self, sender):
         values = [alignmentValuesHorizontal,
@@ -1031,6 +1050,12 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
     def showFontFileName_(self, sender):
         self.fontList.showFontFileName = not self.fontList.showFontFileName
 
+    def showMetrics_(self, sender):
+        self.fontList.showMetrics = not self.fontList.showMetrics
+
+    def showBaseline_(self, sender):
+        self.fontList.showBaseline = not self.fontList.showBaseline
+
     @suppressAndLogException
     def validateMenuItem_(self, sender):
         action = sender.action()
@@ -1047,6 +1072,10 @@ class FGMainWindowController(AppKit.NSWindowController, metaclass=ClassNameIncre
             isVisible = self.w.mainSplitView.isPaneReallyVisible("formattingOptions")
         elif action == "showFontFileName:":
             isVisible = self.fontList.showFontFileName
+        elif action == "showMetrics:":
+            isVisible = self.fontList.showMetrics
+        elif action == "showBaseline:":
+            isVisible = self.fontList.showBaseline
         elif action in ("previousTextLine:", "nextTextLine:"):
             return bool(self.textEntry.textFilePath)
         elif action == "copy:":

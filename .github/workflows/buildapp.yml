@@ -4,114 +4,115 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch: # allow manual trigger
 
 jobs:
   build:
-
     runs-on: macos-latest
 
     steps:
+      - name: Install Certificates
+        run: |
+          echo ${{ secrets.CERTIFICATE_P12 }} | base64 --decode > certificate.p12
+          security import certificate.p12 -P ${{ secrets.CERTIFICATE_PASSWORD }}
+          security create-keychain -p fgKeychain fg.keychain
+          security default-keychain -s fg.keychain
+          security set-keychain-settings -l -u -t 8000
+          security unlock-keychain -p fgKeychain fg.keychain
+          security import certificate.p12 -k fg.keychain -P ${{ secrets.CERTIFICATE_PASSWORD }} -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k fgKeychain fg.keychain
+          rm -fr *.p12
+          # security find-identity -v -p codesigning
 
-    - name: Install Certificates
-      run: |
-        echo ${{ secrets.CERTIFICATE_P12 }} | base64 --decode > certificate.p12
-        security import certificate.p12 -P ${{ secrets.CERTIFICATE_PASSWORD }}
-        security create-keychain -p fgKeychain fg.keychain
-        security default-keychain -s fg.keychain
-        security set-keychain-settings -l -u -t 8000
-        security unlock-keychain -p fgKeychain fg.keychain
-        security import certificate.p12 -k fg.keychain -P ${{ secrets.CERTIFICATE_PASSWORD }} -T /usr/bin/codesign
-        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k fgKeychain fg.keychain
-        rm -fr *.p12
-        # security find-identity -v -p codesigning
+      - name: Git checkout
+        uses: actions/checkout@v4
 
-    - name: Set up Python 3.7
-      run: |
-        curl https://www.python.org/ftp/python/3.7.6/python-3.7.6-macosx10.9.pkg --output pythonInstaller.pkg
-        sudo installer -pkg pythonInstaller.pkg -target /
+      - name: Set up Python from python.org
+        run: |
+          curl https://www.python.org/ftp/python/3.12.8/python-3.12.8-macos11.pkg --output python-installer.pkg
+          sudo installer -pkg python-installer.pkg -target /
+          # Somehow using plain "python3" gives us the runner's homebrew Python,
+          # so let's be explicit about the path:
+          ourpython=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12
+          ls -l $ourpython
+          $ourpython --version
+          $ourpython -c "import platform; print('platform:', platform.platform())"
+          $ourpython -c "import platform; print('macOS version:', platform.mac_ver()[0])"
+          $ourpython -m venv venv
+          source venv/bin/activate
+          python -c "print('venv')"
+          python -c "import sys; print('\n'.join(sys.path))"
+          python -c "import platform; print('platform:', platform.platform())"
+          python -c "import platform; print('macOS version:', platform.mac_ver()[0])"
 
-    - name: Check Python
-      run: |
-        python3 --version
-        python3 -c "import platform; print('macOS version:', platform.mac_ver()[0])"
+      - name: Install dependencies
+        run: |
+          source venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip --version
+          pip install -r requirements.txt | tee pip_log.txt
+          python App/Distribute/ensure_universal_wheels.py pip_log.txt
+          pip install --force build/universal_wheels/*.whl
+          pip install -r requirements-dev.txt
+          pip install .
 
-    - name: Checkout
-      uses: actions/checkout@v1
+      - name: Run Tests
+        run: |
+          source venv/bin/activate
+          pytest
 
-    - name: Setup Virtual Environment
-      run: |
-        python3 -m venv venv
-        source venv/bin/activate
-        python -c "import sys; print('\n'.join(sys.path))"
+      - name: Build Application
+        run: |
+          source venv/bin/activate
+          python App/setup.py py2app
 
-    - name: Install Dependencies
-      run: |
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
-        pip install .
-        # Install custom wheels to workaround various problems, see App/CustomWheels/README.md
-        pip install --upgrade App/CustomWheels/lxml-4.5.0-cp37-cp37m-macosx_10_9_x86_64.whl
+      - name: Codesign and Notarize
+        run: |
+          APP_PATH="App/dist/FontGoggles.app"
+          DMG_PATH="App/dist/FontGoggles.dmg"
+          ENTITLEMENTS_PATH="App/Distribute/entitlements.xml"
 
-    - name: Run Tests
-      run: |
-        source venv/bin/activate
-        pytest
+          source venv/bin/activate
+          App/Distribute/codesign_app.sh "${{ secrets.CODESIGN_NAME }}" "$APP_PATH" "$ENTITLEMENTS_PATH"
+          python App/Distribute/build_dmg.py "$APP_PATH" "$DMG_PATH"
 
-    - name: Build Application
-      run: |
-        source venv/bin/activate
-        python App/setup.py py2app
+          codesign --sign "${{ secrets.CODESIGN_NAME }}" "$DMG_PATH"
 
-    - name: Codesign and Notarize
-      run: |
-        source venv/bin/activate
-        App/Distribute/codesign_app.sh "${{ secrets.CODESIGN_NAME }}" App/dist/FontGoggles.app App/Distribute/entitlements.xml
-        python App/Distribute/build_dmg.py "App/dist/FontGoggles.app" "App/dist/FontGoggles.dmg"
-        codesign --sign "${{ secrets.CODESIGN_NAME }}" "App/dist/FontGoggles.dmg"
-        xcrun altool --notarize-app --primary-bundle-id "com.github.justvanrossum.FontGoggles" \
-                     --username "${{ secrets.NOTARIZE_DEVELOPER }}" \
-                     --password "${{ secrets.NOTARIZE_PASSWORD }}" \
-                     --file App/dist/FontGoggles.dmg \
-                     --output-format xml \
-                     | python App/Distribute/await_notarization.py "${{ secrets.NOTARIZE_DEVELOPER }}" "${{ secrets.NOTARIZE_PASSWORD }}"
-        xcrun stapler staple App/dist/FontGoggles.dmg
+          echo "Run notarytool..."
 
-    - name: Upload Notarization Log
-      uses: actions/upload-artifact@v1
-      if: always()
-      with:
-        name: notarize_log.txt
-        path: notarize_log.txt
+          xcrun notarytool submit \
+            --apple-id "${{ secrets.NOTARIZE_DEVELOPER }}" \
+            --team-id "${{ secrets.NOTARIZE_TEAM_ID }}" \
+            --password "${{ secrets.NOTARIZE_PASSWORD }}" \
+            --output-format json \
+            --wait \
+            $DMG_PATH \
+            | python App/Distribute/print_notarize_log.py \
+              "${{ secrets.NOTARIZE_DEVELOPER }}" \
+              "${{ secrets.NOTARIZE_TEAM_ID }}" \
+              "${{ secrets.NOTARIZE_PASSWORD }}"
 
-    - name: Read CHANGELOG.md
-      id: changelog
-      env:
-        GITHUB_REF: ${{ github.ref }}
-      run: |
-        source venv/bin/activate
-        echo "::set-output name=body::$(python App/Distribute/extract_changes.py)"
+          xcrun stapler staple "$DMG_PATH"
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        body: ${{ steps.changelog.outputs.body }}
-        draft: true
-        prerelease: false
+      - name: Storing macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FontGoggles
+          path: App/dist/FontGoggles.dmg
 
-    - name: Upload Release Asset
-      id: upload-release-asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-        asset_path: App/dist/FontGoggles.dmg
-        asset_name: FontGoggles.dmg
-        asset_content_type: application/octet-stream
+      - name: Read CHANGELOG.md
+        id: changelog
+        if: startsWith(github.event.ref, 'refs/tags')
+        run: |
+          source venv/bin/activate
+          python App/Distribute/extract_changes.py ${{ github.ref_name }} > tmp_latest_changes.txt
+
+      - name: Create Release
+        if: startsWith(github.event.ref, 'refs/tags')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release ${{ github.ref_name }}"
+          body_path: 'tmp_latest_changes.txt'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: App/dist/FontGoggles.dmg
+          draft: true

@@ -10,7 +10,6 @@ from fontTools.feaLib.parser import Parser as FeatureParser
 from fontTools.feaLib.ast import IncludeStatement
 from fontTools.feaLib.error import FeatureLibError
 from fontTools.fontBuilder import FontBuilder
-from fontTools.pens.cocoaPen import CocoaPen  # TODO: factor out mac-specific code
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib import UFOReader, UFOFileStructure
 from fontTools.ufoLib import (FONTINFO_FILENAME, GROUPS_FILENAME, KERNING_FILENAME,
@@ -20,9 +19,10 @@ from ufo2ft.constants import COLOR_LAYER_MAPPING_KEY, COLOR_PALETTES_KEY
 from .baseFont import BaseFont
 from .glyphDrawing import GlyphDrawing, GlyphLayersDrawing
 from ..compile.compilerPool import compileUFOToBytes
-from ..compile.ufoCompiler import fetchCharacterMappingAndAnchors
+from ..compile.ufoCompiler import fetchGlyphInfo
 from ..misc.hbShape import HBShape
 from ..misc.properties import cachedProperty
+from ..misc.platform import platform
 
 
 class UFOFont(BaseFont):
@@ -56,7 +56,7 @@ class UFOFont(BaseFont):
                                      getUnicodesAndAnchors=self._getUnicodesAndAnchors,
                                      includedFeatureFiles=includedFeatureFiles)
 
-        fontData = await compileUFOToBytes(self.fontPath, outputWriter)
+        fontData = await compileUFOToBytes(self.fontPath, True, outputWriter)
 
         f = io.BytesIO(fontData)
         self.ttFont = TTFont(f, lazy=True)
@@ -151,7 +151,7 @@ class UFOFont(BaseFont):
         return glyph
 
     def _addOutlinePathToGlyph(self, glyph):
-        pen = CocoaPen(self.glyphSet)
+        pen = platform.Pen(self.glyphSet)
         glyph.draw(pen)
         glyph.outline = pen.path
 
@@ -161,8 +161,8 @@ class UFOFont(BaseFont):
 
     @cachedProperty
     def defaultVerticalAdvance(self):
-        ascender = getattr(self.info, "ascender", None)
-        descender = getattr(self.info, "descender", None)
+        ascender = self.fontMetrics.ascender
+        descender = self.fontMetrics.descender
         if ascender is None or descender is None:
             return self.info.unitsPerEm
         else:
@@ -170,7 +170,7 @@ class UFOFont(BaseFont):
 
     @cachedProperty
     def defaultVerticalOriginY(self):
-        ascender = getattr(self.info, "ascender", None)
+        ascender = self.fontMetrics.ascender
         if ascender is None:
             return self.info.unitsPerEm  # ???
         else:
@@ -258,7 +258,7 @@ class NotDefGlyph:
         pass
 
     def getOutline(self):
-        pen = CocoaPen(None)  # by now there are no more composites
+        pen = platform.Pen(None)
         self.draw(pen)
         return pen.path
 
@@ -400,9 +400,11 @@ class UFOState:
             changedGlyphNames = {glyphName for glyphName, mtime in prev.glyphModTimes ^ self.glyphModTimes}
             deletedGlyphNames = {glyphName for glyphName in changedGlyphNames if glyphName not in self.glyphSet}
 
-            _, changedUnicodes, changedAnchors = fetchCharacterMappingAndAnchors(self.glyphSet,
-                                                                                 self.reader.fs.getsyspath("/"),
-                                                                                 changedGlyphNames - deletedGlyphNames)
+            _, _, changedUnicodes, changedAnchors = fetchGlyphInfo(
+                self.glyphSet,
+                self.reader.fs.getsyspath("/"),
+                changedGlyphNames - deletedGlyphNames,
+            )
 
             # Within the changed glyphs, let's see if their anchors changed
             for gn in changedGlyphNames:

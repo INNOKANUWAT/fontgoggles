@@ -15,6 +15,7 @@ from bidi.algorithm import (  # noqa: ignore E402
     reorder_resolved_levels, PARAGRAPH_LEVELS,
 )
 from bidi.mirror import MIRRORED  # noqa: ignore E402
+from fontTools.unicodedata.OTTags import SCRIPT_EXCEPTIONS
 
 
 UNKNOWN_SCRIPT = {"Zinh", "Zyyy", "Zxxx"}
@@ -38,7 +39,10 @@ def textSegments(txt):
     chars = list(zip(txt, scripts, levels))
 
     runLenghts = []
-    for value, sub in itertools.groupby(chars, key=lambda item: item[1:]):
+    for value, sub in itertools.groupby(
+        chars,
+        key=lambda item: (SCRIPT_EXCEPTIONS.get(item[1], item[1].lower()), item[2]),
+    ):
         runLenghts.append(len(list(sub)))
 
     segments = []
@@ -72,12 +76,13 @@ def detectScript(txt):
 
     for i, ch in enumerate(txt):
         scr = charScript[i]
-        if scr in UNKNOWN_SCRIPT:
+        cat = category(ch)
+        # Non-spacing mark (Mn) should always inherit script
+        if scr in UNKNOWN_SCRIPT or cat == "Mn":
             if i:
                 scr = charScript[i-1]
             else:
                 scr = None
-            cat = category(ch)
             if ch in MIRRORED and cat == "Pe":
                 scr = None
         charScript[i] = scr
@@ -129,6 +134,7 @@ def getBiDiInfo(text, *, upper_is_rtl=False, base_dir=None, debug=False):
     storage['base_dir'] = ('L', 'R')[base_level]
 
     get_embedding_levels(text, storage, upper_is_rtl, debug)
+    fix_bidi_type_for_unknown_chars(storage)
     assert len(text) == len(storage["chars"])
     for index, (ch, chInfo) in enumerate(zip(text, storage["chars"])):
         assert ch == chInfo["ch"]
@@ -141,3 +147,12 @@ def getBiDiInfo(text, *, upper_is_rtl=False, base_dir=None, debug=False):
     reorder_resolved_levels(storage, debug)
 
     return storage
+
+
+def fix_bidi_type_for_unknown_chars(storage):
+    """Set any bidi type of '' (symptom of a character not known by unicode)
+    to 'L', to prevent the other bidi code to fail (issue 313).
+    """
+    for _ch in storage['chars']:
+        if _ch['type'] == '':
+            _ch['type'] = 'L'
